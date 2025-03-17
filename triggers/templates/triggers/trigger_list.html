@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule an Event</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select {
+            width: 250px;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #3e8e41;
+        }
+        #frequency-options {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 10px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+    <script>
+        function editTrigger(triggerId, name, scheduleTime, frequency) {
+            console.log("Editing Trigger:", triggerId, name, scheduleTime, frequency);
+
+            const triggerIdInput = document.getElementById("trigger-id");
+            const triggerNameInput = document.getElementById("trigger-name");
+            const scheduleTypeInput = document.getElementById("schedule-type");
+            const scheduleTimeInput = document.getElementById("schedule-time");
+            const frequencyInput = document.getElementById("frequency");
+            const scheduleButton = document.getElementById("schedule-button");
+            const updateButton = document.getElementById("update-button");
+            const scheduleTimeGroup = document.getElementById("schedule-time-group");
+            const frequencyGroup = document.getElementById("frequency-group");
+            const predefinedFrequencyGroup = document.getElementById("predefined-frequency");
+            const customFrequencyGroup = document.getElementById("custom-frequency");
+            const customIntervalInput = document.getElementById("custom-interval");
+            const customUnitInput = document.getElementById("custom-interval-unit");
+
+            if (!triggerIdInput || !triggerNameInput || !scheduleTypeInput || !scheduleTimeInput || !frequencyInput ||
+                !scheduleButton || !updateButton || !scheduleTimeGroup || !frequencyGroup ||
+                !customIntervalInput || !customUnitInput) {
+                console.error("❌ Form elements not found! Check your HTML IDs.");
+                return;
+            }
+
+            // ✅ Populate form fields
+            triggerIdInput.value = triggerId;
+            triggerNameInput.value = name || "";
+
+            if (scheduleTime && scheduleTime !== "None") {
+                scheduleTypeInput.value = "one-time";
+                scheduleTimeGroup.style.display = "block";
+                scheduleTimeInput.value = scheduleTime;
+            } else {
+                scheduleTypeInput.value = "recurring";
+                scheduleTimeGroup.style.display = "none";
+            }
+
+            // ✅ Handle Frequency (Predefined or Custom)
+            if (frequency && frequency !== "None") {
+                frequencyGroup.style.display = "block";
+                const interval = frequency.match(/\d+/)?.[0] || '';
+                const unit = frequency.match(/[a-zA-Z]+/)?.[0] || 's';
+                if (["1m", "5m", "30m", "1h", "12h", "1d", "7d"].includes(frequency)) {
+                    predefinedFrequencyGroup.style.display = "block";
+                    customFrequencyGroup.style.display = "none";
+                    frequencyInput.value = frequency;
+                } else {
+                    predefinedFrequencyGroup.style.display = "none";
+                    customFrequencyGroup.style.display = "block";
+                    customIntervalInput.value = interval;
+                    customUnitInput.value = unit;
+                }
+            } else {
+                frequencyGroup.style.display = "none";
+            }
+            scheduleButton.style.display = "none";
+            updateButton.style.display = "block";
+        }
+
+
+        function updateTrigger() {
+            const triggerId = document.getElementById("trigger-id").value;
+            const name = document.getElementById("trigger-name").value.trim();
+            const scheduleTime = document.getElementById("schedule-time").value;
+            const frequency = document.getElementById("frequency").value;
+
+            if (!name) {
+                alert("Event name is required.");
+                return;
+            }
+
+            fetch(`/triggers/update/${triggerId}/`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, schedule_time: scheduleTime, frequency }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                location.reload();
+            })
+            .catch(error => console.error("Error:", error));
+        }
+
+        function fetchExecutedEvents() {
+            fetch("/triggers/executed/")
+                .then(response => response.json())
+                .then(data => {
+                    const executedList = document.getElementById("executed-events-list");
+                    executedList.innerHTML = ""; // Clear previous list
+        
+                    if (data.executed_events.length === 0) {
+                        executedList.innerHTML = "<li>No executed events yet.</li>";
+                        return;
+                    }
+        
+                    data.executed_events.forEach(event => {
+                        // Convert UTC to IST (UTC +5:30)
+                        const executedDate = new Date(event.executed_at);
+                        
+                        // Convert to IST manually
+                        const IST_OFFSET = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
+                        const istDate = new Date(executedDate.getTime() + IST_OFFSET);
+        
+                        const localTime = istDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+        
+                        // Format payload if it exists
+                        let payloadDisplay = "";
+                        if (event.source === "api" && event.payload) {
+                            payloadDisplay = `<br><strong>Payload:</strong> <pre>${JSON.stringify(event.payload, null, 2)}</pre>`;
+                        }
+        
+                        const listItem = document.createElement("li");
+                        listItem.innerHTML = `<strong>Event:</strong> ${event.name} |
+                                              <strong>Type:</strong> ${event.type} |
+                                              <strong>Status:</strong> ${event.status} |
+                                              <strong>Source:</strong> ${event.source} |
+                                              <strong>Executed at:</strong> ${localTime}
+                                              ${payloadDisplay}`;
+                        executedList.appendChild(listItem);
+                    });
+                })
+                .catch(error => console.error("Error fetching executed events:", error));
+        }
+        
+        fetchExecutedEvents();
+        setInterval(fetchExecutedEvents, 10000);
+
+
+        function updateScheduleOptions() {
+            const scheduleType = document.getElementById("schedule-type").value;
+            document.getElementById("schedule-time-group").style.display = scheduleType === "one-time" ? "block" : "none";
+            document.getElementById("frequency-group").style.display = scheduleType === "recurring" ? "block" : "none";
+        }
+
+        function showCustomFrequency() {
+            const frequencyType = document.querySelector('input[name="frequency_type"]:checked').value;
+            document.getElementById("predefined-frequency").classList.toggle("hidden", frequencyType !== "predefined");
+            document.getElementById("custom-frequency").classList.toggle("hidden", frequencyType !== "custom");
+        }
+        function createTrigger() {
+            const name = document.getElementById("trigger-name").value.trim();
+            const scheduleType = document.getElementById("schedule-type").value;
+            let scheduleTime = null, frequency = null;
+
+            if (!name) {
+                alert("Event name is required.");
+                return;
+            }
+
+            if (scheduleType === "one-time") {
+                const oneTimeType = document.querySelector('input[name="one_time_type"]:checked').value;
+                if (oneTimeType === "absolute") {
+                    scheduleTime = document.getElementById("schedule-time").value;
+                    if (!scheduleTime) {
+                        alert("Please select a valid date and time.");
+                        return;
+                    }
+                } else if (oneTimeType === "relative") {
+                    const intervalValue = document.getElementById("relative-interval").value;
+                    const intervalUnit = document.getElementById("relative-interval-unit").value;
+
+                    if (!intervalValue || intervalValue <= 0) {
+                        alert("Relative interval must be a positive number.");
+                        return;
+                    }
+                    scheduleTime = `${intervalValue}${intervalUnit}`; // Example: "10m", "2h"
+                }
+            } else if (scheduleType === "recurring") {
+                const frequencyType = document.querySelector('input[name="frequency_type"]:checked').value;
+                if (frequencyType === "predefined") {
+                    frequency = document.getElementById("frequency").value;
+                } else {
+                    const intervalValue = document.getElementById("custom-interval").value;
+                    const intervalUnit = document.getElementById("custom-interval-unit").value;
+
+                    if (!intervalValue || intervalValue <= 0) {
+                        alert("Custom interval must be a positive number.");
+                        return;
+                    }
+                    frequency = `${intervalValue}${intervalUnit}`;
+                }
+            }
+
+            fetch("/triggers/create/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name,
+                    schedule_type: scheduleType,
+                    schedule_time: scheduleTime,
+                    frequency
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                location.reload();
+            })
+            .catch(error => console.error("Error:", error));
+        }
+        function deleteTrigger(triggerId) {
+            if (!confirm("Are you sure you want to delete this event?")) return;
+
+            fetch(`/triggers/delete/${triggerId}/`, { method: "DELETE" })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    location.reload();
+                })
+                .catch(error => console.error("Error:", error));
+        }
+        function testTrigger() {
+            const name = document.getElementById("trigger-name").value.trim();
+            const oneTimeType = document.querySelector('input[name="one_time_type"]:checked').value;
+            let scheduleTime = null;
+
+            if (!name) {
+                alert("Please provide an event name.");
+                return;
+            }
+
+            if (oneTimeType === "absolute") {
+                scheduleTime = document.getElementById("schedule-time").value;
+                if (!scheduleTime) {
+                    alert("Please select a valid date and time.");
+                    return;
+                }
+            } else if (oneTimeType === "relative") {
+                const intervalValue = document.getElementById("relative-interval").value;
+                const intervalUnit = document.getElementById("relative-interval-unit").value;
+
+                if (!intervalValue || intervalValue <= 0) {
+                    alert("Relative interval must be a positive number.");
+                    return;
+                }
+                scheduleTime = `${intervalValue}${intervalUnit}`; // Example: "10m", "2h"
+            }
+
+            fetch("/triggers/test/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, schedule_time: scheduleTime }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.test_trigger) {
+                    alert(`✅ Test Trigger "${name}" scheduled for execution at ${data.scheduled_at}!`);
+                }
+            })
+            .catch(error => console.error("Error:", error));
+        }
+    </script>
+</head>
+<body>
+    <h1>Schedule an Event</h1>
+
+    <form onsubmit="event.preventDefault(); createTrigger();">
+        <input type="hidden" id="trigger-id">
+        <label for="trigger-name">Event Name:</label>
+        <input type="text" id="trigger-name" required>
+
+        <label for="schedule-type">Schedule Type:</label>
+        <select id="schedule-type" onchange="updateScheduleOptions()">
+            <option value="one-time">One-Time</option>
+            <option value="recurring">Recurring</option>
+        </select>
+        <div id="schedule-time-group" class="hidden">
+            <label>Schedule Time:</label>
+            <div>
+                <input type="radio" id="absolute-time" name="one_time_type" value="absolute" checked>
+                <label for="absolute-time">Set exact date & time</label>
+                <input type="datetime-local" id="schedule-time">
+            </div>
+            <div>
+                <input type="radio" id="relative-time" name="one_time_type" value="relative">
+                <label for="relative-time">Set relative time</label>
+                <input type="number" id="relative-interval" min="1" placeholder="Enter number">
+                <select id="relative-interval-unit">
+                    <option value="m">Minutes</option>
+                    <option value="h">Hours</option>
+                    <option value="d">Days</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="frequency-group" class="hidden">
+            <label>Repeat Every:</label>
+            <div id="frequency-options">
+                <label><input type="radio" name="frequency_type" value="predefined" checked onclick="showCustomFrequency()"> Predefined</label>
+                <label><input type="radio" name="frequency_type" value="custom" onclick="showCustomFrequency()"> Custom</label>
+            </div>
+
+            <div id="predefined-frequency">
+                <label for="frequency">Select Frequency:</label>
+                <select id="frequency">
+                    <option value="1m">1 Minute</option>
+                    <option value="5m">5 Minutes</option>
+                    <option value="30m">30 Minutes</option>
+                    <option value="1h">1 Hour</option>
+                    <option value="12h">12 Hours</option>
+                    <option value="1d">1 Day</option>
+                    <option value="7d">1 Week</option>
+                </select>
+            </div>
+
+            <div id="custom-frequency" class="hidden">
+                <label for="custom-interval">Interval:</label>
+                <input type="number" id="custom-interval" min="1">
+
+                <label for="custom-interval-unit">Unit:</label>
+                <select id="custom-interval-unit">
+                    <option value="s">Seconds</option>
+                    <option value="m">Minutes</option>
+                    <option value="h">Hours</option>
+                    <option value="d">Days</option>
+                    <option value="w">Weeks</option>
+                </select>
+            </div>
+        </div>
+
+        <button type="submit">Schedule Event</button>
+        <button type="button" onclick="testTrigger()">Test Event</button>
+        <button type="button" id="update-button" style="display:none;" onclick="updateTrigger()">Update</button>
+    </form>
+
+    <h2>Scheduled Events</h2>
+    <ul>
+        {% for trigger in triggers %}
+            <li>
+                <strong>{{ trigger.name }}</strong> -
+                {% if trigger.schedule_time %}
+                    Scheduled at: {{ trigger.schedule_time }}
+                {% else %}
+                    Recurring every: {{ trigger.frequency }}
+                {% endif %}
+                <button onclick="deleteTrigger({{ trigger.id }})">Delete</button>
+
+            </li>
+        {% endfor %}
+    </ul>
+    <h2>Executed Events</h2>
+    <ul id="executed-events-list">
+        <li>Loading...</li>
+    </ul>
+    <script>document.addEventListener("DOMContentLoaded", function () {
+        updateScheduleOptions();
+    });</script>
+</body>
+</html>
